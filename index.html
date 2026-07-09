@@ -1,0 +1,584 @@
+<title>Club Room — LiveOps Visualizer</title>
+<style>
+  :root{
+    --bg:#E4E7DD;
+    --bg-panel:#EFF1E8;
+    --bg-card:#F7F8F2;
+    --ink:#1B2420;
+    --ink-soft:#4B564D;
+    --line: rgba(27,36,32,0.14);
+    --accent:#B9862F;
+    --accent-strong:#8C641E;
+    --accent-tint: rgba(185,134,47,0.16);
+    --coral:#C15B44;
+    --coral-tint: rgba(193,91,68,0.14);
+    --good:#3F8F5F;
+    --good-tint: rgba(63,143,95,0.16);
+    --muted:#D3D6C9;
+    --shadow: 0 1px 2px rgba(20,26,22,.07), 0 8px 24px rgba(20,26,22,.07);
+    --radius: 16px;
+    --font-display:'Iowan Old Style','Palatino Linotype', Georgia, serif;
+    --font-body: -apple-system, BlinkMacSystemFont,'Segoe UI', system-ui, sans-serif;
+    --font-mono: ui-monospace,'SF Mono', Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#10160D; --bg-panel:#161F1B; --bg-card:#1B2620; --ink:#E9EEE7; --ink-soft:#9FB0A2;
+      --line: rgba(233,238,229,0.12); --accent:#D9A94A; --accent-strong:#F0C874; --accent-tint: rgba(217,169,74,0.16);
+      --coral:#E08267; --coral-tint: rgba(224,130,103,0.16); --good:#5FBE84; --good-tint: rgba(95,190,132,0.18);
+      --muted:#2A342E; --shadow: 0 1px 2px rgba(0,0,0,.45), 0 12px 32px rgba(0,0,0,.4);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#10160D; --bg-panel:#161F1B; --bg-card:#1B2620; --ink:#E9EEE7; --ink-soft:#9FB0A2;
+    --line: rgba(233,238,229,0.12); --accent:#D9A94A; --accent-strong:#F0C874; --accent-tint: rgba(217,169,74,0.16);
+    --coral:#E08267; --coral-tint: rgba(224,130,103,0.16); --good:#5FBE84; --good-tint: rgba(95,190,132,0.18);
+    --muted:#2A342E; --shadow: 0 1px 2px rgba(0,0,0,.45), 0 12px 32px rgba(0,0,0,.4);
+  }
+  :root[data-theme="light"]{
+    --bg:#E4E7DD; --bg-panel:#EFF1E8; --bg-card:#F7F8F2; --ink:#1B2420; --ink-soft:#4B564D;
+    --line: rgba(27,36,32,0.14); --accent:#B9862F; --accent-strong:#8C641E; --accent-tint: rgba(185,134,47,0.16);
+    --coral:#C15B44; --coral-tint: rgba(193,91,68,0.14); --good:#3F8F5F; --good-tint: rgba(63,143,95,0.16);
+    --muted:#D3D6C9; --shadow: 0 1px 2px rgba(20,26,22,.07), 0 8px 24px rgba(20,26,22,.07);
+  }
+
+  *{ box-sizing: border-box; }
+  body{ margin:0; }
+  .page{
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-body);
+    min-height: 100vh;
+    padding: 40px clamp(16px, 5vw, 64px) 80px;
+  }
+  .wrap{ max-width: 1100px; margin: 0 auto; display:flex; flex-direction:column; gap:32px; }
+
+  .eyebrow{
+    font-family: var(--font-mono); font-size: 12px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--accent-strong); display:flex; align-items:center; gap:8px;
+  }
+  .eyebrow::before{ content:""; width:18px; height:2px; background: var(--accent); display:inline-block; }
+  h1{ font-family: var(--font-display); font-weight: 600; font-size: clamp(30px, 4.2vw, 44px); margin: 10px 0 6px; text-wrap: balance; letter-spacing: -0.01em; }
+  .sub{ color: var(--ink-soft); font-size: 16px; max-width: 66ch; line-height:1.55; margin:0; }
+
+  /* pipeline */
+  .pipeline{ display:flex; align-items:stretch; gap:0; overflow-x:auto; padding-bottom:4px; }
+  .stage{ flex: 1 1 140px; min-width:120px; position:relative; padding: 14px 14px 16px; border-top: 3px solid var(--muted); transition: border-color .25s ease; }
+  .stage.is-active{ border-top-color: var(--accent); }
+  .stage.is-done{ border-top-color: var(--good); }
+  .stage-num{ font-family: var(--font-mono); font-size: 11px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+  .stage-name{ font-size: 13px; font-weight: 600; margin-top: 3px; }
+  .stage-dot{ position:absolute; top:-6px; left:14px; width:9px; height:9px; border-radius:50%; background: var(--muted); transition: background .25s ease, transform .25s ease; }
+  .stage.is-active .stage-dot{ background: var(--accent); transform: scale(1.25); }
+  .stage.is-done .stage-dot{ background: var(--good); }
+
+  /* layout: phone + controls */
+  .stage-shell{ display:grid; grid-template-columns: 372px 1fr; gap:36px; align-items:start; }
+  @media (max-width: 860px){ .stage-shell{ grid-template-columns: 1fr; justify-items:center; } }
+
+  /* ---------- Phone ---------- */
+  .phone-wrap{ width:100%; max-width:372px; }
+  .phone-body{
+    background: linear-gradient(160deg, #232420, #0c0d0b);
+    border-radius:50px; padding:12px;
+    box-shadow: var(--shadow), 0 0 0 1px rgba(255,255,255,.05) inset;
+  }
+  .phone-body[data-active="room"] .screen[data-screen="club"]{ transform: translateX(-100%); }
+  .phone-body[data-active="room"] .screen[data-screen="room"]{ transform: translateX(0%); }
+  .phone-screen{ position:relative; width:100%; aspect-ratio: 375/790; background:#120F0B; border-radius:38px; overflow:hidden; }
+  .island{ position:absolute; top:10px; left:50%; transform:translateX(-50%); width:86px; height:20px; background:#000; border-radius:12px; z-index:30; }
+  .home-ind{ position:absolute; bottom:8px; left:50%; transform:translateX(-50%); width:112px; height:4px; border-radius:4px; background: rgba(255,255,255,.35); z-index:30; }
+
+  .screen{
+    position:absolute; inset:0; display:flex; flex-direction:column;
+    color: #F3EFE6; transition: transform .4s cubic-bezier(.4,0,.2,1);
+    padding: 36px 12px 18px;
+  }
+  .screen[data-screen="club"]{ transform: translateX(0%); }
+  .screen[data-screen="room"]{ transform: translateX(100%); }
+
+  /* club screen */
+  .cs-topbar{ display:flex; align-items:center; gap:8px; padding:0 4px 10px; }
+  .cs-avatar{ width:30px; height:30px; border-radius:50%; background: rgba(255,255,255,.12); display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0; }
+  .cs-club-info{ flex:1; min-width:0; }
+  .cs-club-name{ font-size:13.5px; font-weight:700; line-height:1.2; }
+  .cs-club-sub{ font-size:10.5px; color:rgba(243,239,230,.55); font-family: var(--font-mono); }
+  .icon-btn{ width:26px; height:26px; border-radius:50%; background:rgba(255,255,255,.08); border:none; color:#F3EFE6; font-size:12px; display:flex; align-items:center; justify-content:center; }
+
+  .cs-stage{
+    border-radius:18px; padding:14px 10px 10px; margin-bottom:10px;
+    background: radial-gradient(120% 90% at 50% 0%, rgba(185,134,47,.10), rgba(255,255,255,.02));
+    transition: background 1s ease;
+    position:relative; overflow:hidden;
+  }
+  .cs-stage.is-decorated{ background: radial-gradient(130% 100% at 50% 0%, rgba(217,169,74,.28), rgba(193,91,68,.10) 60%, rgba(255,255,255,.02)); }
+  .decor-strip{ position:absolute; top:4px; left:0; right:0; display:flex; justify-content:center; gap:10px; font-size:14px; opacity:0; transition: opacity .6s ease; pointer-events:none; }
+  .cs-stage.is-decorated .decor-strip{ opacity:.9; }
+
+  .mic-grid{ display:grid; grid-template-columns: repeat(4,1fr); gap:10px; margin-top:14px; }
+  .seat{ display:flex; flex-direction:column; align-items:center; gap:4px; }
+  .seat-circle{
+    width:44px; height:44px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    font-size:19px; background:rgba(255,255,255,.08); border:1.5px solid rgba(255,255,255,.14); position:relative;
+  }
+  .seat.is-empty .seat-circle{ border-style:dashed; color:rgba(243,239,230,.4); background:transparent; }
+  .seat.is-you .seat-circle{ cursor:pointer; }
+  .seat.is-you.on-mic .seat-circle{ border-color: var(--p-accent, #D9A94A); box-shadow: 0 0 0 3px rgba(217,169,74,.18); }
+  .seat.is-speaking .seat-circle{ animation: ring 1.6s ease-out infinite; }
+  @keyframes ring{ 0%{ box-shadow:0 0 0 0 rgba(95,190,132,.5);} 70%{ box-shadow:0 0 0 7px rgba(95,190,132,0);} 100%{ box-shadow:0 0 0 0 rgba(95,190,132,0);} }
+  .seat-badge{ position:absolute; bottom:-2px; right:-2px; width:15px; height:15px; border-radius:50%; background:#1B2A22; font-size:8px; display:flex; align-items:center; justify-content:center; }
+  .seat-label{ font-size:8.5px; color:rgba(243,239,230,.55); font-family: var(--font-mono); }
+
+  .cs-actions{ display:flex; gap:10px; padding:2px 4px 10px; position:relative; }
+  .action-btn{
+    flex:1; display:flex; flex-direction:column; align-items:center; gap:3px;
+    background: rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1); border-radius:12px;
+    padding:8px 4px; color:#F3EFE6; font-size:9.5px; font-family: var(--font-mono);
+  }
+  .action-btn .glyph{ font-size:16px; }
+  .action-btn.is-featured{ border-color: rgba(217,169,74,.55); box-shadow: 0 0 0 3px rgba(217,169,74,.14); }
+
+  .gift-pop{
+    display:none; position:absolute; bottom:56px; left:10px; right:10px;
+    background:#1C1D19; border:1px solid rgba(255,255,255,.12); border-radius:12px; padding:8px; gap:8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.4); z-index:10;
+  }
+  .gift-pop.is-open{ display:flex; }
+  .gift-opt{ flex:1; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1); border-radius:9px; color:#F3EFE6; padding:8px 4px; font-size:11px; text-align:center; }
+
+  .cs-chat{ flex:1; min-height:0; overflow-y:auto; display:flex; flex-direction:column; gap:5px; padding:4px 4px 6px; font-size:11px; }
+  .msg{ line-height:1.35; }
+  .msg b{ color: #D9A94A; }
+  .msg.system{ color: rgba(243,239,230,.55); font-style:italic; }
+
+  .cs-inputbar{ display:flex; gap:8px; align-items:center; padding-top:6px; }
+  .cs-input{ flex:1; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.12); border-radius:999px; padding:8px 12px; font-size:11px; color:rgba(243,239,230,.5); }
+  .send-btn{ width:30px; height:30px; border-radius:50%; background:#D9A94A; border:none; color:#1B1200; font-size:13px; flex-shrink:0; }
+
+  /* room screen */
+  .rs-topbar{ display:flex; align-items:center; gap:8px; padding:0 2px 10px; }
+  .back-btn{ width:26px; height:26px; border-radius:50%; background:rgba(255,255,255,.08); border:none; color:#F3EFE6; font-size:13px; }
+  .rs-title{ flex:1; min-width:0; }
+  .rs-title .name{ font-size:13.5px; font-weight:700; }
+  .rs-title .tag{ font-size:10px; color:rgba(243,239,230,.5); font-family: var(--font-mono); }
+  .rs-wallet{ display:flex; align-items:center; gap:5px; background:rgba(217,169,74,.15); border-radius:999px; padding:5px 10px; font-size:11px; font-family:var(--font-mono); color:#F0C874; }
+  .lb-btn{ width:26px; height:26px; border-radius:50%; background:rgba(224,130,103,.18); border:none; color:#E08267; font-size:12px; }
+
+  .rs-body{ flex:1; min-height:0; overflow-y:auto; padding:2px 2px 6px; }
+  .rs-grid{ display:grid; grid-template-columns: repeat(2,1fr); gap:8px; }
+  .r-card{ background:rgba(255,255,255,.055); border:1px solid rgba(255,255,255,.1); border-radius:12px; padding:9px; display:flex; flex-direction:column; gap:6px; transition: box-shadow .2s ease; }
+  .r-card.is-maxed{ box-shadow: 0 0 0 1px #5FBE84 inset; }
+  .r-top{ display:flex; align-items:center; justify-content:space-between; }
+  .r-icon{ font-size:18px; }
+  .r-tier{ font-family: var(--font-mono); font-size:8.5px; padding:2px 6px; border-radius:999px; background:rgba(255,255,255,.1); color:rgba(243,239,230,.6); }
+  .r-tier.in-progress{ background:rgba(217,169,74,.2); color:#F0C874; }
+  .r-tier.maxed{ background:rgba(95,190,132,.2); color:#5FBE84; }
+  .r-name{ font-size:10.5px; font-weight:600; }
+  .r-track{ height:6px; border-radius:999px; background:rgba(255,255,255,.1); overflow:hidden; }
+  .r-fill{ height:100%; border-radius:999px; background:#D9A94A; width:0%; transition: width .35s cubic-bezier(.4,0,.2,1); }
+  .r-fill.maxed{ background:#5FBE84; }
+  .r-meta{ font-family: var(--font-mono); font-size:8.5px; color:rgba(243,239,230,.5); }
+  .r-contribute{ margin-top:1px; border:none; border-radius:8px; padding:6px 4px; font-size:9.5px; font-weight:700; background:#D9A94A; color:#1B1200; }
+  .r-contribute:disabled{ opacity:.35; background:rgba(255,255,255,.12); color:rgba(243,239,230,.5); }
+  @keyframes pulse{ 0%{ transform:scale(1);} 40%{ transform:scale(1.05);} 100%{ transform:scale(1);} }
+  .r-card.just-tiered{ animation: pulse .4s ease; }
+
+  .rs-lb{ display:none; flex-direction:column; gap:5px; margin-top:8px; border-top:1px solid rgba(255,255,255,.1); padding-top:8px; }
+  .rs-lb.is-open{ display:flex; }
+  .rs-lb-row{ display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,.055); border-radius:8px; padding:6px 9px; font-size:10.5px; }
+  .rs-lb-row.is-you{ box-shadow: 0 0 0 1px #D9A94A inset; }
+  .rs-lb-pts{ font-family:var(--font-mono); color:#F0C874; }
+
+  .rs-complete{ display:none; margin-top:10px; background:rgba(95,190,132,.14); border:1px solid rgba(95,190,132,.5); border-radius:12px; padding:12px; flex-direction:column; gap:8px; }
+  .rs-complete.is-open{ display:flex; }
+  .rs-complete h4{ margin:0; font-size:12.5px; }
+  .rs-complete p{ margin:0; font-size:9.5px; color:rgba(243,239,230,.7); line-height:1.4; }
+  .rs-next{ align-self:flex-start; background:#5FBE84; border:none; border-radius:999px; padding:7px 14px; font-size:10.5px; font-weight:700; color:#08160D; }
+
+  /* ---------- Controls panel ---------- */
+  .controls{ display:flex; flex-direction:column; gap:18px; }
+  .panel{ background: var(--bg-panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px 22px; box-shadow: var(--shadow); }
+  .panel h3{ font-family: var(--font-display); font-size:17px; margin:0 0 4px; }
+  .panel p.hint{ margin:0 0 14px; font-size:13px; color:var(--ink-soft); line-height:1.5; }
+  .config-row{ display:flex; gap:14px; flex-wrap:wrap; }
+  .config-field{ display:flex; flex-direction:column; gap:4px; }
+  .config-field label{ font-size:11px; color: var(--ink-soft); font-family: var(--font-mono); }
+  .config-field input{ width:84px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; border:1px solid var(--line); border-radius:8px; padding:6px 8px; background: var(--bg-card); color:var(--ink); font-size:13px; }
+  button:focus-visible, input:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .legend{ font-size: 12.5px; color: var(--ink-soft); line-height: 1.7; }
+  .legend b{ color: var(--ink); }
+  .legend li{ margin-bottom:4px; }
+
+  @media (prefers-reduced-motion: reduce){
+    .r-fill, .r-card, .stage-dot, .seat.is-speaking .seat-circle, .screen{ transition:none !important; animation:none !important; }
+  }
+</style>
+
+<div class="page">
+  <div class="wrap">
+
+    <header>
+      <div class="eyebrow">Clubs · LiveOps</div>
+      <h1>Club Room</h1>
+      <p class="sub">Starting from the actual Club screen — mic seats, chat, gifting — tap the Room icon to enter the shared decoration project the club funds together.</p>
+    </header>
+
+    <nav class="pipeline" id="pipeline" aria-label="Feature flow">
+      <div class="stage" data-stage="1"><span class="stage-dot"></span><div class="stage-num">01</div><div class="stage-name">Club Screen · Earn</div></div>
+      <div class="stage" data-stage="2"><span class="stage-dot"></span><div class="stage-num">02</div><div class="stage-name">Enter Room</div></div>
+      <div class="stage" data-stage="3"><span class="stage-dot"></span><div class="stage-num">03</div><div class="stage-name">Contribute</div></div>
+      <div class="stage" data-stage="4"><span class="stage-dot"></span><div class="stage-num">04</div><div class="stage-name">Tier Up</div></div>
+      <div class="stage" data-stage="5"><span class="stage-dot"></span><div class="stage-num">05</div><div class="stage-name">Room Complete</div></div>
+      <div class="stage" data-stage="6"><span class="stage-dot"></span><div class="stage-num">06</div><div class="stage-name">Next Level</div></div>
+    </nav>
+
+    <div class="stage-shell">
+      <div class="phone-wrap">
+        <div class="phone-body" id="phoneBody" data-active="club">
+          <div class="phone-screen">
+            <div class="island"></div>
+
+            <!-- CLUB SCREEN -->
+            <div class="screen" data-screen="club">
+              <div class="cs-topbar">
+                <div class="cs-avatar">🏠</div>
+                <div class="cs-club-info">
+                  <div class="cs-club-name">Desert Nights Club</div>
+                  <div class="cs-club-sub" id="onlineCount">128 online</div>
+                </div>
+                <button class="icon-btn">🔍</button>
+                <button class="icon-btn">⋮</button>
+              </div>
+
+              <div class="cs-stage" id="csStage">
+                <div class="decor-strip" id="decorStrip"></div>
+                <div class="mic-grid" id="micGrid"></div>
+              </div>
+
+              <div class="cs-actions">
+                <button class="action-btn" id="giftBtn"><span class="glyph">🎁</span>Gift</button>
+                <button class="action-btn is-featured" id="roomBtn"><span class="glyph">🛋️</span>Room</button>
+                <button class="action-btn"><span class="glyph">⋯</span>More</button>
+                <div class="gift-pop" id="giftPop">
+                  <button class="gift-opt" data-amt="10">🌹 Rose<br>+10 pts</button>
+                  <button class="gift-opt" data-amt="25">💎 Diamond<br>+25 pts</button>
+                </div>
+              </div>
+
+              <div class="cs-chat" id="chatFeed"></div>
+
+              <div class="cs-inputbar">
+                <div class="cs-input">Say something…</div>
+                <button class="send-btn" id="sendBtn">➤</button>
+              </div>
+            </div>
+
+            <!-- ROOM SCREEN -->
+            <div class="screen" data-screen="room">
+              <div class="rs-topbar">
+                <button class="back-btn" id="backBtn">‹</button>
+                <div class="rs-title">
+                  <div class="name" id="roomName">Club Room · Cozy Lounge</div>
+                  <div class="tag" id="roomTag">Room 1</div>
+                </div>
+                <div class="rs-wallet">💰 <span id="walletVal">0</span></div>
+                <button class="lb-btn" id="lbToggle">🏆</button>
+              </div>
+
+              <div class="rs-body">
+                <div class="rs-grid" id="objectGrid"></div>
+                <div class="rs-lb" id="lbPanel">
+                  <div class="tag" style="margin-bottom:2px;">This room's leaderboard</div>
+                  <div id="lbList"></div>
+                </div>
+                <div class="rs-complete" id="completeBanner">
+                  <h4>🎉 Club Room Complete</h4>
+                  <p>Room set as the Club screen background · <span id="topContributor">—</span> earns the exclusive border · new giftables unlock (future scope)</p>
+                  <button class="rs-next" id="nextLevelBtn">Start Room 2 →</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="home-ind"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="controls">
+        <div class="panel">
+          <h3>Designer controls</h3>
+          <p class="hint">Tune the tier-cost economy live and watch the phone above recompute — this panel isn't part of the app, it's here so you can pressure-test the numbers.</p>
+          <div class="config-row">
+            <div class="config-field"><label>Tier 1 cost</label><input type="number" id="cost1" value="20" min="1" step="5"></div>
+            <div class="config-field"><label>Tier 2 cost</label><input type="number" id="cost2" value="40" min="1" step="5"></div>
+            <div class="config-field"><label>Tier 3 cost</label><input type="number" id="cost3" value="80" min="1" step="5"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>Assumptions from spec</h3>
+          <ul class="legend">
+            <li><b>Wallet</b> accrues indefinitely, no cap.</li>
+            <li><b>Leaderboard</b> — one per room, summed across all 6 objects, resets on completion.</li>
+            <li><b>Unlock order</b> — all objects open in parallel, no fixed sequence.</li>
+            <li><b>Tier thresholds</b> — tunable config (left), not fixed values.</li>
+            <li><b>Entry</b> — Room icon sits directly in the Club screen's action row, no intermediate club-detail screen.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function(){
+  var ROOMS = [
+    { name: "Cozy Lounge", tag: "Room 1", items: [
+      {icon:"🪴", name:"Potted Plant"}, {icon:"🛋️", name:"Sofa"}, {icon:"🖼️", name:"Wall Art"},
+      {icon:"💡", name:"Floor Lamp"}, {icon:"🎉", name:"Banner"}, {icon:"📻", name:"Radio"}
+    ]},
+    { name: "Neon Nights", tag: "Room 2", items: [
+      {icon:"🪩", name:"Disco Ball"}, {icon:"🎆", name:"Neon Sign"}, {icon:"🍸", name:"Bar Cart"},
+      {icon:"🎶", name:"Speakers"}, {icon:"🛸", name:"Ceiling Light"}, {icon:"🧊", name:"Ice Bucket"}
+    ]}
+  ];
+
+  var SEATS = [
+    {type:'owner', avatar:'😎'}, {type:'npc', avatar:'👩'}, {type:'you', avatar:null},
+    {type:'npc', avatar:'🧔'}, {type:'npc', avatar:'👩‍🦰', speaking:true},
+    {type:'empty', avatar:null}, {type:'npc', avatar:'🧑‍🦱'}, {type:'npc', avatar:'👨'}
+  ];
+
+  var state = {
+    onMic: false, wallet: 0, roomIndex: 0, objects: [], you: 0, npc: [],
+    lbOpen: false, giftOpen: false, lastCompletedRoom: -1,
+    chat: [
+      {from:'RaviK', text:'yo who’s next on mic'},
+      {from:null, text:'Zee_09 sent 🌹 Rose x5 to NoorS', system:true},
+      {from:'NoorS', text:'contributing to the room rn'}
+    ]
+  };
+
+  function costs(){
+    return [
+      Math.max(1, parseInt(document.getElementById('cost1').value, 10) || 20),
+      Math.max(1, parseInt(document.getElementById('cost2').value, 10) || 40),
+      Math.max(1, parseInt(document.getElementById('cost3').value, 10) || 80)
+    ];
+  }
+  function boundaries(){ var c = costs(); return [c[0], c[0]+c[1], c[0]+c[1]+c[2]]; }
+  function tierOf(points){ var b = boundaries(); if (points>=b[2]) return 3; if (points>=b[1]) return 2; if (points>=b[0]) return 1; return 0; }
+  function allMaxed(){ var b = boundaries(); return state.objects.length>0 && state.objects.every(function(o){ return o.points >= b[2]; }); }
+
+  function loadRoom(i){
+    var room = ROOMS[i];
+    state.roomIndex = i;
+    state.objects = room.items.map(function(it){ return { icon: it.icon, name: it.name, points: 0 }; });
+    state.you = 0;
+    state.npc = i === 0
+      ? [ {name:"Zee_09", pts:46}, {name:"NoorS", pts:31}, {name:"RaviK", pts:12} ]
+      : [ {name:"NoorS", pts:9}, {name:"Zee_09", pts:5}, {name:"RaviK", pts:2} ];
+    document.getElementById('roomName').textContent = "Club Room · " + room.name;
+    document.getElementById('roomTag').textContent = room.tag;
+    document.getElementById('completeBanner').classList.remove('is-open');
+    render();
+  }
+
+  function addWallet(n){ state.wallet += n; render(); }
+
+  function contribute(idx){
+    if (state.wallet <= 0) return;
+    var obj = state.objects[idx];
+    var b = boundaries();
+    if (obj.points >= b[2]) return;
+    var before = tierOf(obj.points);
+    obj.points += state.wallet;
+    state.you += state.wallet;
+    state.wallet = 0;
+    var after = tierOf(obj.points);
+    if (allMaxed()) state.lastCompletedRoom = state.roomIndex;
+    render();
+    if (after > before){
+      var card = document.querySelectorAll('.r-card')[idx];
+      if (card){ card.classList.add('just-tiered'); setTimeout(function(){ card.classList.remove('just-tiered'); }, 400); }
+    }
+  }
+
+  function pushChat(from, text, system){
+    state.chat.push({from: from, text: text, system: !!system});
+    if (state.chat.length > 6) state.chat.shift();
+  }
+
+  /* ---------- render: club screen ---------- */
+  function renderMicGrid(){
+    var grid = document.getElementById('micGrid');
+    grid.innerHTML = '';
+    SEATS.forEach(function(seat){
+      var el = document.createElement('div');
+      var isYou = seat.type === 'you';
+      var occupied = seat.type !== 'empty' && !(isYou && !state.onMic);
+      el.className = 'seat' + (seat.type==='empty' || (isYou && !state.onMic) ? ' is-empty' : '') + (isYou ? ' is-you' : '') + (isYou && state.onMic ? ' on-mic' : '') + (seat.speaking ? ' is-speaking' : '');
+      var circle = document.createElement('div');
+      circle.className = 'seat-circle';
+      circle.textContent = isYou ? (state.onMic ? '🙂' : '+') : (seat.type==='empty' ? '+' : seat.avatar);
+      if (occupied && seat.type !== 'empty'){
+        var badge = document.createElement('span');
+        badge.className = 'seat-badge';
+        badge.textContent = seat.type==='owner' ? '👑' : '🎤';
+        circle.appendChild(badge);
+      }
+      if (isYou){ circle.addEventListener('click', function(){ state.onMic = !state.onMic; if (state.onMic) addWallet(5); else render(); }); }
+      var label = document.createElement('div');
+      label.className = 'seat-label';
+      label.textContent = isYou ? 'You' : (seat.type==='owner' ? 'Owner' : (seat.type==='empty' ? 'Empty' : 'Member'));
+      el.appendChild(circle); el.appendChild(label);
+      grid.appendChild(el);
+    });
+  }
+
+  function renderClubBackground(){
+    var stage = document.getElementById('csStage');
+    var strip = document.getElementById('decorStrip');
+    var decorated = state.lastCompletedRoom >= 0;
+    stage.classList.toggle('is-decorated', decorated);
+    if (decorated){
+      strip.innerHTML = ROOMS[state.lastCompletedRoom].items.map(function(it){ return it.icon; }).join(' ');
+    } else {
+      strip.innerHTML = '';
+    }
+  }
+
+  function renderChat(){
+    var feed = document.getElementById('chatFeed');
+    feed.innerHTML = '';
+    state.chat.forEach(function(m){
+      var row = document.createElement('div');
+      row.className = 'msg' + (m.system ? ' system' : '');
+      if (m.system){ row.textContent = m.text; }
+      else { row.innerHTML = '<b>' + m.from + ':</b> ' + m.text; }
+      feed.appendChild(row);
+    });
+    feed.scrollTop = feed.scrollHeight;
+  }
+
+  /* ---------- render: room screen ---------- */
+  function renderGrid(){
+    var b = boundaries();
+    var grid = document.getElementById('objectGrid');
+    grid.innerHTML = '';
+    state.objects.forEach(function(obj, idx){
+      var tier = tierOf(obj.points);
+      var maxed = tier >= 3;
+      var lowerBound = tier === 0 ? 0 : b[tier-1];
+      var upperBound = tier === 3 ? b[2] : b[tier];
+      var span = upperBound - lowerBound;
+      var pct = maxed ? 100 : Math.min(100, Math.round(((obj.points - lowerBound) / span) * 100));
+
+      var card = document.createElement('div');
+      card.className = 'r-card' + (maxed ? ' is-maxed' : '');
+
+      var top = document.createElement('div'); top.className = 'r-top';
+      var icon = document.createElement('span'); icon.className = 'r-icon'; icon.textContent = obj.icon;
+      var badge = document.createElement('span'); badge.className = 'r-tier ' + (maxed ? 'maxed' : (tier>0 ? 'in-progress' : ''));
+      badge.textContent = maxed ? 'MAX' : ('T' + tier + '/3');
+      top.appendChild(icon); top.appendChild(badge);
+
+      var name = document.createElement('div'); name.className = 'r-name'; name.textContent = obj.name;
+
+      var track = document.createElement('div'); track.className = 'r-track';
+      var fill = document.createElement('div'); fill.className = 'r-fill' + (maxed ? ' maxed' : ''); fill.style.width = pct + '%';
+      track.appendChild(fill);
+
+      var meta = document.createElement('div'); meta.className = 'r-meta';
+      meta.textContent = maxed ? (obj.points + ' pts') : (obj.points + '/' + upperBound);
+
+      var btn = document.createElement('button'); btn.className = 'r-contribute';
+      btn.textContent = maxed ? 'Maxed' : ('+' + state.wallet);
+      btn.disabled = maxed || state.wallet <= 0;
+      btn.addEventListener('click', function(){ contribute(idx); });
+
+      card.appendChild(top); card.appendChild(name); card.appendChild(track); card.appendChild(meta); card.appendChild(btn);
+      grid.appendChild(card);
+    });
+  }
+
+  function renderLeaderboard(){
+    var all = state.npc.concat([{name:'You', pts: state.you}]);
+    all.sort(function(a,b){ return b.pts - a.pts; });
+    var list = document.getElementById('lbList');
+    list.innerHTML = '';
+    all.forEach(function(p, i){
+      var row = document.createElement('div');
+      row.className = 'rs-lb-row' + (p.name === 'You' ? ' is-you' : '');
+      row.innerHTML = '<span>' + (i===0?'🏅 ':'#'+(i+1)+' ') + p.name + '</span><span class="rs-lb-pts">' + p.pts + ' pts</span>';
+      list.appendChild(row);
+    });
+    document.getElementById('topContributor').textContent = all[0].name;
+  }
+
+  function renderComplete(){ document.getElementById('completeBanner').classList.toggle('is-open', allMaxed()); }
+
+  function renderPipeline(){
+    var phone = document.getElementById('phoneBody');
+    var onRoom = phone.dataset.active === 'room';
+    var complete = allMaxed();
+    var active = complete ? 5 : (onRoom ? (state.wallet > 0 ? 3 : 4) : (state.onMic || state.wallet > 0 ? 1 : 1));
+    document.querySelectorAll('.stage').forEach(function(el){
+      var s = parseInt(el.getAttribute('data-stage'), 10);
+      el.classList.toggle('is-active', s === active);
+      el.classList.toggle('is-done', s < active);
+    });
+  }
+
+  function render(){
+    document.getElementById('walletVal').textContent = state.wallet;
+    document.getElementById('onlineCount').textContent = (state.onMic ? 129 : 128) + ' online';
+    renderMicGrid();
+    renderClubBackground();
+    renderChat();
+    renderGrid();
+    renderLeaderboard();
+    renderComplete();
+    renderPipeline();
+  }
+
+  /* ---------- wiring ---------- */
+  document.getElementById('roomBtn').addEventListener('click', function(){
+    document.getElementById('phoneBody').dataset.active = 'room';
+    render();
+  });
+  document.getElementById('backBtn').addEventListener('click', function(){
+    document.getElementById('phoneBody').dataset.active = 'club';
+    render();
+  });
+  document.getElementById('giftBtn').addEventListener('click', function(){
+    state.giftOpen = !state.giftOpen;
+    document.getElementById('giftPop').classList.toggle('is-open', state.giftOpen);
+  });
+  document.querySelectorAll('.gift-opt').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var amt = parseInt(btn.getAttribute('data-amt'), 10);
+      var name = amt === 10 ? '🌹 Rose' : '💎 Diamond';
+      pushChat(null, 'You sent ' + name + ' to NoorS', true);
+      state.giftOpen = false;
+      document.getElementById('giftPop').classList.remove('is-open');
+      addWallet(amt);
+    });
+  });
+  document.getElementById('sendBtn').addEventListener('click', function(){
+    pushChat('You', '👍 nice!');
+    addWallet(2);
+  });
+  document.getElementById('lbToggle').addEventListener('click', function(){
+    state.lbOpen = !state.lbOpen;
+    document.getElementById('lbPanel').classList.toggle('is-open', state.lbOpen);
+  });
+  document.getElementById('nextLevelBtn').addEventListener('click', function(){
+    loadRoom((state.roomIndex + 1) % ROOMS.length);
+  });
+  ['cost1','cost2','cost3'].forEach(function(id){ document.getElementById(id).addEventListener('input', render); });
+
+  loadRoom(0);
+})();
+</script>
